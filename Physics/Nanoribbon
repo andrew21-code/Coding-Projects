@@ -1,0 +1,168 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# --- PARAMETERS ---
+N = 100           # Number of atoms per cell
+L = 100          # Number of k-points
+t = -2.7         # Hopping energy (eV)
+a = 1.42      # C-C bond length (Å)
+
+# Unit cell periodicities
+a_uc_ZGNR = 2 * a               # Periodicity for ZGNR (along y)
+a_uc_AGNR = np.sqrt(3) * a      # Periodicity for AGNR (along x) 
+
+def site_index(n, sublattice, M):  
+    """Map (n, sublattice) → single index"""
+    return 2*n + sublattice
+
+def build_H_ZGNR(ky, N, t, a_uc):
+    """
+    Builds the Bloch Hamiltonian H(ky) for ZGNR using the intra-cell (H0)
+    and inter-cell (H1) hoppings derived from the unit cell.
+    """
+    H0 = np.zeros((N, N), dtype=complex) # Intra-cell (H_i,i)
+    H1 = np.zeros((N, N), dtype=complex) # Inter-cell (H_i, i-1)
+    
+    M = N // 2
+
+    # ==========================================================
+    # 1. Intra-Cell Hoppings (H0)
+    # Hoppings between atoms within the same cell 'i'
+    # Connections: A_n <-> B_n (Vertical) and B_n <-> A_{n+1} (Diagonal)
+    # ==========================================================
+    for n in range(M):
+        i_A = site_index(n, 0, M)
+        i_B = site_index(n, 1, M)
+
+        # A_n <-> B_n (Vertical hop)
+        H0[i_A, i_B] = t
+        H0[i_B, i_A] = t
+
+        # B_n <-> A_{n+1} (Diagonal hop)
+        if n < N//2 - 1:
+            i_A_next = site_index(n+1, 0, M)
+            H0[i_B, i_A_next] = t
+            H0[i_A_next, i_B] = t
+
+    # ==========================================================
+    # 2. Inter-Cell Hoppings (H1)
+    # Hoppings between atoms in cell 'i' and cell 'i-1'
+    # Connections: A_{n-1} (i-1) → B_n (i)
+    # ==========================================================
+    
+    for n in range(1, M):
+        i_A = site_index(n, 0, M)           # A_n (White, current cell i)
+        i_B_prev = site_index(n, 1, M)    # B_{n-1} (Dark, current cell i-1)
+
+        # H_{i, i-1} term (H1): A_n (in i) <-> B_{n-1} (in i-1)
+        H1[i_A, i_B_prev] = t
+        
+    # ==========================================================
+    # 3. Construct Bloch Hamiltonian H(ky)
+    # ==========================================================
+    
+    # H1† is the Hermitian conjugate of H1: H_i-1, i
+    H1_dagger = H1.conj().T
+    
+    # H(ky) = H0 + H1 * exp(-i ky a_uc) + H1† * exp(+i ky a_uc)
+    H = H0 + H1 * np.exp(-1j * ky * a_uc) + H1_dagger * np.exp(+1j * ky * a_uc)
+    
+    return H
+
+
+def build_H_AGNR(ky, N, t, a_uc):
+    """
+    Builds the Bloch Hamiltonian H(ky) for AGNR using the intra-cell (H0)
+    and inter-cell (H1) hoppings derived from the unit cell.
+    """
+    M = N // 2
+    H0 = np.zeros((N, N), dtype=complex) # Intra-cell (H_i,i)
+    H1 = np.zeros((N, N), dtype=complex) # Inter-cell (H_i, i-1)
+
+    # ==========================================================
+    # 1. Intra-Cell Hoppings (H0)
+    # Hoppings between atoms within the same cell 'i'
+    # Connections: A_n <-> B_n (Vertical) and B_n <-> A_{n+1} (Diagonal)
+    # ==========================================================
+    for n in range(M):
+        i_A = site_index(n, 0, M)
+        i_B = site_index(n, 1, M)
+
+        # A_n <-> B_n (Vertical hop)
+        H0[i_A, i_B] = t
+        H0[i_B, i_A] = t
+
+        # B_n <-> A_{n+1} (Diagonal hop)
+        if n < M - 1:
+            i_A_next = site_index(n+1, 0, M)
+            H0[i_B, i_A_next] = t
+            H0[i_A_next, i_B] = t
+
+    # ==========================================================
+    # 2. Inter-Cell Hoppings (H1)
+    # Hoppings between atoms in cell 'i' and cell 'i-1'
+    # Connections: A_{n-1} (i-1) → B_n (i)
+    # ==========================================================
+    
+    for n in range(1, M):
+        i_B = site_index(n, 1, M)           # B_n (Black, current cell i)
+        i_A_prev = site_index(n-1, 0, M)    # A_{n-1} (White, current cell i-1)
+
+        # H_{i, i-1} term (H1): B_n (in i) <-> A_{n-1} (in i-1)
+        H1[i_B, i_A_prev] = t
+    # ==========================================================
+    # 3. Construct Bloch Hamiltonian H(ky)
+    # ==========================================================
+    # H1† is the Hermitian conjugate of H1: H_i-1
+    H1_dagger = H1.conj().T
+
+    H = H0 + H1 * np.exp(-1j * ky * a_uc) + H1_dagger * np.exp(+1j * ky * a_uc)
+    
+    return H
+
+
+# Compute band structures
+
+k_values_ZGNR = np.linspace(-np.pi/a_uc_ZGNR, np.pi/a_uc_ZGNR, L)
+k_values_AGNR = np.linspace(-np.pi/a_uc_AGNR, np.pi/a_uc_AGNR, L)
+energies_ZGNR = []
+energies_AGNR = []
+
+for ky in k_values_ZGNR:
+    H_ZGNR = build_H_ZGNR(ky, N, t, a_uc_ZGNR)
+    eigs_ZGNR = np.linalg.eigvalsh(H_ZGNR)
+    energies_ZGNR.append(eigs_ZGNR)
+
+for kx in k_values_AGNR:
+    H_AGNR = build_H_AGNR(kx, N, t, a_uc_AGNR)
+    eigs_AGNR = np.linalg.eigvalsh(H_AGNR)
+    energies_AGNR.append(eigs_AGNR)
+
+# Convert to numpy arrays for easier indexing
+energies_ZGNR = np.array(energies_ZGNR)
+energies_AGNR = np.array(energies_AGNR)
+
+bandgap_ZGNR = energies_ZGNR[L//2, N//2] - energies_ZGNR[L//2, N//2 - 1]
+bandgap_AGNR = energies_AGNR[L//2, N//2] - energies_AGNR[L//2, N//2 - 1]
+print(f"Bandgap of ZGNR: {bandgap_ZGNR:.4f} eV")
+print(f"Bandgap of AGNR: {bandgap_AGNR:.4f} eV")
+
+# Plotting the band structures
+plt.figure(figsize=(10, 5))
+plt.subplot(1, 2, 1)
+for n in range(N):
+    plt.plot(k_values_ZGNR, energies_ZGNR[:, n], color='blue')
+plt.title("Band Structure of Zigzag GNR (Egap {:.2f} eV)".format(bandgap_ZGNR))
+plt.xlabel("k_y (1/Å)")
+plt.ylabel("Energy (eV)")
+plt.grid()
+plt.tight_layout()
+plt.subplot(1, 2, 2)
+for n in range(N):
+    plt.plot(k_values_AGNR, energies_AGNR[:, n], color='red')
+plt.title("Band Structure of Armchair GNR (Egap {:.2f} eV)".format(bandgap_AGNR))
+plt.xlabel("k_x (1/Å)")
+plt.ylabel("Energy (eV)")
+plt.grid()
+plt.tight_layout()
+plt.show()
