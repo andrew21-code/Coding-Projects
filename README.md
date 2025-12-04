@@ -12,4 +12,5 @@ In this folder we have some Quantum Algorithm implemented in Qiskit:
 
 # Physical Simulation
 There we find simulation of physical systems:
-1) Graphene nanoribbon bandstructure for zigzag and armchair. We can observe the two different electrical properties of the same material but cut into 2 different ways
+1) 1D Graphene nanoribbon bandstructure for zigzag and armchair. We can observe the two different electrical properties of the same material but cut into 2 different ways
+2) Bulk graphene band structure in tight biding model
