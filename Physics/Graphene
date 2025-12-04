@@ -1,0 +1,116 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# --- Geometry / parameters ---
+a_cc = 1.42           # Å (C–C distance)
+t     = -2.7          # eV (nearest-neighbor hopping)
+tmag  = abs(t)
+
+a1 = 0.5 * a_cc * np.array([3.0,  np.sqrt(3.0)])
+a2 = 0.5 * a_cc * np.array([3.0, -np.sqrt(3.0)])
+
+b1 = (2*np.pi/(3*a_cc)) * np.array([1.0,  np.sqrt(3.0)])
+b2 = (2*np.pi/(3*a_cc)) * np.array([1.0, -np.sqrt(3.0)])
+
+G  = np.array([0.0, 0.0])
+K  = (b1 + 2*b2) / 3
+M  = (b1 + b2)  / 2
+
+# --- k-path (choose order and keep comment consistent) ---
+# Γ -> K -> M -> Γ
+path   = [G, K, M, G]
+labels = [r'$\Gamma$', r'$K$', r'$M$', r'$\Gamma$']
+
+# samples per segment
+nseg = 200
+
+# build k-points with exact boundaries and cumulative distance
+k_points = []
+k_ticks  = [0.0]
+for i in range(len(path)-1):
+    start, end = path[i], path[i+1]
+    seg = np.linspace(0.0, 1.0, nseg, endpoint=False)[:, None]  # interior
+    pts = start + (end - start) * seg
+    k_points.append(pts)
+    # append the exact endpoint for boundary alignment
+    k_points.append(end[None, :])
+
+k_points = np.vstack(k_points)
+
+# cumulative k-distance for x-axis
+dk = np.linalg.norm(np.diff(k_points, axis=0), axis=1)
+x  = np.concatenate([[0.0], np.cumsum(dk)])
+
+# recompute tick positions at path vertices
+tick_pos = [0.0]
+cursor = 0
+for i in range(len(path)-1):
+    cursor += nseg  # interior points
+    cursor += 1     # the explicit endpoint we appended
+    tick_pos.append(x[cursor-1])
+
+# --- tight-binding band energies via structure factor ---
+def bands(kx, ky):
+    #k = np.array([kx, ky])
+    #f = 1.0 + np.exp(1j*np.dot(k, a1)) + np.exp(1j*np.dot(k, a2))
+    #E = tmag * np.abs(f)
+    term = 1 + 4 * np.cos(3 * kx *  a_cc / 2) * np.cos(np.sqrt(3)* ky * a_cc / 2) + 4 * np.cos(np.sqrt(3) * ky * a_cc / 2)**2
+    E = tmag * np.sqrt(term)
+    return -E, +E
+
+E_minus, E_plus = [], []
+for kx, ky in k_points:
+    em, ep = bands(kx, ky)
+    E_minus.append(em)
+    E_plus.append(ep)
+
+# Define the k-range for plotting (e.g., a square region around Gamma)
+# A typical range covers the first Brillouin Zone. We can simplify the visualization
+# by choosing a region from -2*pi/(a*sqrt(3)) to 2*pi/(a*sqrt(3)) in kx,ky
+k_range = 1.2 * 2 * np.pi / (a_cc * np.sqrt(3))
+N = 100
+kx = np.linspace(-k_range, k_range, N)
+ky = np.linspace(-k_range, k_range, N)
+
+KX, KY = np.meshgrid(kx, ky)
+E_minus_grid, E_plus_grid = bands(KX, KY)
+
+
+
+# --- plot ---
+from mpl_toolkits.mplot3d import Axes3D
+
+fig = plt.figure(figsize=(10, 8))
+ax = fig.add_subplot(111, projection='3d')
+
+# Plot the Conduction Band (E_plus)
+ax.plot_surface(KX, KY, E_plus_grid,  alpha=0.9, linewidth=0)
+
+# Plot the Valence Band (E_minus)
+ax.plot_surface(KX, KY, E_minus_grid,  alpha=0.9, linewidth=0)
+
+# Labeling and aesthetics
+ax.set_xlabel('$k_x$')
+ax.set_ylabel('$k_y$')
+ax.set_zlabel('Energy (eV)')
+ax.set_title('3D Graphene Band Structure (Nearest-Neighbor Tight Binding)')
+
+# Set viewing angle for better visualization
+ax.view_init(elev=10, azim=45)
+
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(8,6))
+plt.plot(x, E_plus)
+plt.plot(x, E_minus)
+for tp in tick_pos:
+    plt.axvline(tp, linestyle='--', alpha=0.3)
+plt.xticks(tick_pos, labels)
+plt.ylabel("Energy (eV)")
+plt.title("Graphene Band Structure (nearest-neighbor tight binding)")
+plt.grid(alpha=0.2)
+plt.tight_layout()
+plt.show()
+
+
